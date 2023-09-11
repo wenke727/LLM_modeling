@@ -9,13 +9,18 @@ from llama.tokenization_llama import LlamaTokenizer
 
 
 repo_id = "./ckpt/llama-2-13b-chat-hf"
-model = LlamaForCausalLM.from_pretrained(repo_id, device_map='auto', torch_dtype=torch.float16, load_in_8bit=False)
+model = LlamaForCausalLM.from_pretrained(repo_id, device_map='auto')
 model = model.eval()
 tokenizer = LlamaTokenizer.from_pretrained(repo_id, use_fast=False)
 
 
+from bigmodelvis import Visualization
+Visualization(model).structure_graph();
+
+
 tokenizer.pad_token = tokenizer.eos_token
-input_ids = tokenizer(['<s>Human: Introduce the history of Shenzhen\n</s><s>Assistant: '], return_tensors="pt",add_special_tokens=False).input_ids.to('cuda')        
+input_ids = tokenizer(['<s>Human: Introduce the history of Shenzhen\n</s><s>Assistant: '], 
+                      return_tensors="pt",add_special_tokens=False).input_ids.to('cuda')        
 generate_input = {
     "input_ids":input_ids,
     "max_new_tokens":512,

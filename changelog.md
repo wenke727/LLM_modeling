@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning].
 
 - /
 
+## [0.0.2] - 2023-09-11
+
+### Changed
+
+- LLaMA 模块化
+  - LlamaModel
+  - decode layer
+  - attention
+  - mlp
+  - norm
+  - rope
+  - misc
+
 ## [0.0.1] - 2023-09-11
 
 ### Added

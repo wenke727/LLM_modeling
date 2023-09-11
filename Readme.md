@@ -1,5 +1,7 @@
 # LLaMA2 代码学习
 
+:link: [Llama源码深入解析 - 知乎 (zhihu.com)](https://zhuanlan.zhihu.com/p/648365207)
+
 ## 代码
 
 > copy from [transformers](https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/), date: 2023-09-11
