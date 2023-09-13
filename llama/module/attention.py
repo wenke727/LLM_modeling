@@ -3,6 +3,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from typing import Optional, Tuple
+from loguru import logger
 
 from .position_embedding import *
 from ..configuration_llama import LlamaConfig
@@ -23,35 +24,36 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
 class LlamaAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: LlamaConfig, layer_num:int=0):
         super().__init__()
         self.config = config
-        self.hidden_size = config.hidden_size
-        self.num_heads = config.num_attention_heads
-        self.head_dim = self.hidden_size // self.num_heads
-        self.num_key_value_heads = config.num_key_value_heads
-        self.num_key_value_groups = self.num_heads // self.num_key_value_heads
-        self.max_position_embeddings = config.max_position_embeddings
-        self.rope_theta = config.rope_theta
+        self.layer_num = layer_num
+        self.hidden_size = config.hidden_size # 5120
+        self.num_heads = config.num_attention_heads # 40
+        self.head_dim = self.hidden_size // self.num_heads # 128
+        self.num_key_value_heads = config.num_key_value_heads # 40 
+        self.num_key_value_groups = self.num_heads // self.num_key_value_heads # 1
+        self.max_position_embeddings = config.max_position_embeddings # 2048
+        self.rope_theta = config.rope_theta # 10000.0
 
         if (self.head_dim * self.num_heads) != self.hidden_size:
             raise ValueError(
                 f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
                 f" and `num_heads`: {self.num_heads})."
             )
-        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False)
-        self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
-        self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
-        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
+        self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False) # 5120, 5120
+        self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False) # 5120, 5120
+        self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False) # 5120, 5120
+        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False) # 5120, 5120
         self._init_rope()
 
     def _init_rope(self):
-        if self.config.rope_scaling is None:
+        if self.config.rope_scaling is None: # None
             self.rotary_emb = LlamaRotaryEmbedding(
                 self.head_dim,
                 max_position_embeddings=self.max_position_embeddings,
                 base=self.rope_theta,
-            )
+            ) # 128, 2048, 10000.0
         else:
             scaling_type = self.config.rope_scaling["type"]
             scaling_factor = self.config.rope_scaling["factor"]
@@ -84,9 +86,11 @@ class LlamaAttention(nn.Module):
         output_attentions: bool = False,
         use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        # Step 1: Get the dimensions of the input
         bsz, q_len, _ = hidden_states.size()
 
-        if self.config.pretraining_tp > 1:
+        #  Step 2: Apply linear transformations to get query, key, and value states
+        if self.config.pretraining_tp > 1: # self.config.pretraining_tp = 1
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
             query_slices = self.q_proj.weight.split(
                 (self.num_heads * self.head_dim) // self.config.pretraining_tp, dim=0
@@ -102,33 +106,43 @@ class LlamaAttention(nn.Module):
 
             value_states = [F.linear(hidden_states, value_slices[i]) for i in range(self.config.pretraining_tp)]
             value_states = torch.cat(value_states, dim=-1)
-
         else:
             query_states = self.q_proj(hidden_states)
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
 
-        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        # Step 3: Reshape the states for multi-head attention computation
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2) # [bs, seq, 5120] -> [bs, num_head / 40, seq, 128]
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
+        # Step 4: Apply Rotary Position Embeddings (RoPE) to query and key
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
+        # Step 5: Use past key and value states if provided
         if past_key_value is not None:
             # reuse k, v, self_attention
             key_states = torch.cat([past_key_value[0], key_states], dim=2)
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
+            if self.layer_num == 1:
+                logger.trace(f"past_key_value: {list(past_key_value[0].shape)}, {list(past_key_value[1].shape)}, "
+                             f"key_value: {list(key_states.shape)}, {list(value_states.shape)}")
+        else:
+            if self.layer_num == 1:
+                logger.trace(f"past_key_value is None")
+            
 
         past_key_value = (key_states, value_states) if use_cache else None
 
-        # repeat k/v heads if n_kv_heads < n_heads
+        # Step 6: repeat k/v heads if n_kv_heads < n_heads
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
+        # Step 7: Compute attention weights between query and key
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
@@ -137,6 +151,7 @@ class LlamaAttention(nn.Module):
                 f" {attn_weights.size()}"
             )
 
+        # Step 8: Apply attention mask if provided
         if attention_mask is not None:
             if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                 raise ValueError(
@@ -144,7 +159,8 @@ class LlamaAttention(nn.Module):
                 )
             attn_weights = attn_weights + attention_mask
 
-        # upcast attention to fp32
+        # Step 9: Compute the output using attention weights and value states
+        # upcast attention to `fp32`
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_output = torch.matmul(attn_weights, value_states)
 
@@ -154,6 +170,7 @@ class LlamaAttention(nn.Module):
                 f" {attn_output.size()}"
             )
 
+        # Step 10: Reshape the output and apply the output linear transformation
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 

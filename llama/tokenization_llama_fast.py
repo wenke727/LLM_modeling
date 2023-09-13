@@ -33,7 +33,8 @@ if is_sentencepiece_available():
 else:
     LlamaTokenizer = None
 
-logger = logging.get_logger(__name__)
+from loguru import logger
+
 VOCAB_FILES_NAMES = {"vocab_file": "tokenizer.model", "tokenizer_file": "tokenizer.json"}
 
 B_INST, E_INST = "[INST]", "[/INST]"

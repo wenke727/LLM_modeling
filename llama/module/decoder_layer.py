@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from typing import Optional, Tuple
+from loguru import logger
 
 from .mlp import LlamaMLP
 from .norm import LlamaRMSNorm
@@ -9,10 +10,11 @@ from ..configuration_llama import LlamaConfig
 
 
 class LlamaDecoderLayer(nn.Module):
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: LlamaConfig, lvl:int):
         super().__init__()
+        self.layer_num = lvl
         self.hidden_size = config.hidden_size
-        self.self_attn = LlamaAttention(config=config)
+        self.self_attn = LlamaAttention(config=config, layer_num=lvl)
         self.mlp = LlamaMLP(config)
         self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)

@@ -19,6 +19,7 @@
 # limitations under the License.
 """ PyTorch LLaMA model."""
 from typing import List, Optional, Tuple, Union
+from loguru import logger
 
 import torch
 import torch.nn.functional as F
@@ -29,10 +30,10 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.modeling_outputs import CausalLMOutputWithPast, SequenceClassifierOutputWithPast
 from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
 
-from .module.model import LlamaModel, LlamaPreTrainedModel, LLAMA_INPUTS_DOCSTRING, LLAMA_START_DOCSTRING
+from .module.model import LlamaModel, LlamaPreTrainedModel
+from .module.misc import LLAMA_INPUTS_DOCSTRING, LLAMA_START_DOCSTRING
 
-
-logger = logging.get_logger(__name__)
+from loguru import logger
 
 _CONFIG_FOR_DOC = "LlamaConfig"
 

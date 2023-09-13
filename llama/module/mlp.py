@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from loguru import logger
 import torch.nn.functional as F
 from transformers.activations import ACT2FN
 
@@ -10,10 +11,10 @@ class LlamaMLP(nn.Module):
         self.config = config
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
-        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
-        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        self.act_fn = ACT2FN[config.hidden_act]
+        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)    # 5120, 13824
+        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)      # 5120, 13824
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)    # 5120, 13824
+        self.act_fn = ACT2FN[config.hidden_act] # silu
 
     def forward(self, x):
         if self.config.pretraining_tp > 1:
@@ -33,6 +34,9 @@ class LlamaMLP(nn.Module):
             ]
             down_proj = sum(down_proj)
         else:
+            # ((bs, len, 13824) * (bs, len, 13824))
+            # TODO dimension 
+            # $Swish_{\beta}(x, W, V, b, c, \beta) = Swish_{\beta}(xW + b) \otimes (xV + c)$
             down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
         return down_proj

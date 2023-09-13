@@ -1,15 +1,16 @@
 import torch
+from loguru import logger
 
 
 class LlamaRotaryEmbedding(torch.nn.Module):
     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
         super().__init__()
 
-        self.dim = dim
+        self.dim = dim # 128
         self.max_position_embeddings = max_position_embeddings
         self.base = base
         inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        self.register_buffer("inv_freq", inv_freq, persistent=False) # [64]
 
         # Build here to make `torch.jit.trace` work.
         self._set_cos_sin_cache(
@@ -18,11 +19,11 @@ class LlamaRotaryEmbedding(torch.nn.Module):
 
     def _set_cos_sin_cache(self, seq_len, device, dtype):
         self.max_seq_len_cached = seq_len
-        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype) # [2048]
 
-        freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+        freqs = torch.einsum("i,j->ij", t, self.inv_freq) # [2048, 64]
         # Different from paper, but it uses a different permutation in order to obtain the same calculation
-        emb = torch.cat((freqs, freqs), dim=-1)
+        emb = torch.cat((freqs, freqs), dim=-1) # [2048, 128], 横向拼接，torch.allclose(emb[:, 0], emb[:, 64])
         self.register_buffer("cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False)
         self.register_buffer("sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False)
 
@@ -47,7 +48,7 @@ class LlamaLinearScalingRotaryEmbedding(LlamaRotaryEmbedding):
     def _set_cos_sin_cache(self, seq_len, device, dtype):
         self.max_seq_len_cached = seq_len
         t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
-        t = t / self.scaling_factor
+        t = t / self.scaling_factor # `线形内插`相当于将位置序号等比例缩小
 
         freqs = torch.einsum("i,j->ij", t, self.inv_freq)
         # Different from paper, but it uses a different permutation in order to obtain the same calculation
@@ -69,7 +70,7 @@ class LlamaDynamicNTKScalingRotaryEmbedding(LlamaRotaryEmbedding):
         if seq_len > self.max_position_embeddings:
             base = self.base * (
                 (self.scaling_factor * seq_len / self.max_position_embeddings) - (self.scaling_factor - 1)
-            ) ** (self.dim / (self.dim - 2))
+            ) ** (self.dim / (self.dim - 2)) # `NTK` 扩展方式直接对 base 进行缩放
             inv_freq = 1.0 / (base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
             self.register_buffer("inv_freq", inv_freq, persistent=False)
 
@@ -84,6 +85,7 @@ class LlamaDynamicNTKScalingRotaryEmbedding(LlamaRotaryEmbedding):
 
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
+    # 和论文推导不一致，正负号不是相间的，而是分前半部分和后半部分
     x1 = x[..., : x.shape[-1] // 2]
     x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1)

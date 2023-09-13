@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from transformers.pipelines.conversational import Conversation
     from transformers.tokenization_utils_base import TextInput
 
-logger = logging.get_logger(__name__)
+from loguru import logger
 
 VOCAB_FILES_NAMES = {"vocab_file": "tokenizer.model"}
 
