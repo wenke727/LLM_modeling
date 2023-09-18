@@ -9,7 +9,33 @@ and this project adheres to [Semantic Versioning].
 
 - /
 
+## [0.0.5] - 2023-09-18
 
+### Added
+
+- chatglm2  <- [ChatGLM2-6B: Huggineface](https://huggingface.co/THUDM/chatglm2-6b/commit/8fd7fba285f7171d3ae7ea3b35c53b6340501ed1)
+
+  将代码从仓库复制至本文件，仅作以下处理
+
+  - 代码挪到根目录下
+
+  - tokenizer：
+
+    文件：tokenizer_config.json, tokenizer.model 和 tokenization_chatglm.py
+
+- ckpt/chatglm2-6b-hf：
+
+  - 文件
+
+    config.json、pytorch_model.bin.index.json
+
+  - 权重
+
+    pytorch_model-00001-of-00007.bin ~ pytorch_model-00007-of-00007.bin
+
+- debug_chatglm
+
+  用于 debug chatglm2
 
 ## [0.0.4] - 2023-09-18
 
