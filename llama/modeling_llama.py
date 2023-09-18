@@ -19,7 +19,6 @@
 # limitations under the License.
 """ PyTorch LLaMA model."""
 from typing import List, Optional, Tuple, Union
-from loguru import logger
 
 import torch
 import torch.nn.functional as F

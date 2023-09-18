@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning].
 
 - /
 
+## [0.0.6] - 2023-09-18
+
+### Changed
+
+- chatglm2  
+
+  - 根据模块重构 `modeling_chatglm.py`
+
+  - diff
+
+    [chatglm2-6b](https://huggingface.co/THUDM/chatglm2-6b) 和 [chatglm2-6b-32k](https://huggingface.co/THUDM/chatglm2-6b-32k) 核心代码比较
+
+  - ckpt/chatglm2-6b-hf
+
+    增加文件 config.json、pytorch_model.bin.index.json、link_weight.sh
+
+- debug.py
+
+  - debug_LLaMA_2
+  - debug_ChatGLM2_6B
+
 ## [0.0.5] - 2023-09-18
 
 ### Added
@@ -25,13 +46,7 @@ and this project adheres to [Semantic Versioning].
 
 - ckpt/chatglm2-6b-hf：
 
-  - 文件
-
-    config.json、pytorch_model.bin.index.json
-
-  - 权重
-
-    pytorch_model-00001-of-00007.bin ~ pytorch_model-00007-of-00007.bin
+  权重：pytorch_model-00001-of-00007.bin ~ pytorch_model-00007-of-00007.bin
 
 - debug_chatglm
 
