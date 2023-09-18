@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning].
 
 
 
+## [0.0.4] - 2023-09-18
+
+### Changed
+
+- module
+
+  - attention
+    - repeat_kv： num_key_value_heads 在维度上的重复是逐个相间的， AAABBB…XXX
+    - LlamaAttention：总结创新点
+
+  - model
+    - 增加 logger 功能
+    - forward 注释
+      - position_ids 作用：仅作用于 RoPE, 用于位置编码，主要是KV Cache 的引入，使得顺序需要使用绝对位置表示
+
 ## [0.0.3] - 2023-09-12
 
 ### Added

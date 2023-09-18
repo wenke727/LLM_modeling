@@ -10,6 +10,7 @@ class LlamaMLP(nn.Module):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
+        # ? why 13824: 5120 * 4 / 3 * 2 = 13653,  108 * 128 = 13824 
         self.intermediate_size = config.intermediate_size
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)    # 5120, 13824
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)      # 5120, 13824
@@ -35,8 +36,7 @@ class LlamaMLP(nn.Module):
             down_proj = sum(down_proj)
         else:
             # ((bs, len, 13824) * (bs, len, 13824))
-            # TODO dimension 
-            # $Swish_{\beta}(x, W, V, b, c, \beta) = Swish_{\beta}(xW + b) \otimes (xV + c)$
+            # $Swish_{\beta}(x, W, V, b, c, \beta) = Swish_{\beta}(xW + b) \otimes (xV + c)$, normaly $\beta = 1$
             down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
         return down_proj

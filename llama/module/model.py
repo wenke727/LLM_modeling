@@ -8,14 +8,13 @@ from loguru import logger
 
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
-from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging
+from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward
 from ..configuration_llama import LlamaConfig
 
 from .norm import LlamaRMSNorm
 from .misc import _make_causal_mask, _expand_mask
 from .decoder_layer import LlamaDecoderLayer
 from .misc import LLAMA_INPUTS_DOCSTRING, LLAMA_START_DOCSTRING
-from loguru import logger
 
 _CONFIG_FOR_DOC = "LlamaConfig"
 
@@ -59,8 +58,9 @@ class LlamaModel(LlamaPreTrainedModel):
         config: LlamaConfig
     """
 
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: LlamaConfig, verbose_level='debug'):
         super().__init__(config)
+        self.verbose_level = verbose_level
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
@@ -83,6 +83,7 @@ class LlamaModel(LlamaPreTrainedModel):
         # create causal mask
         # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
         combined_attention_mask = None
+        ops = []
         if input_shape[-1] > 1:
             combined_attention_mask = _make_causal_mask(
                 input_shape,
@@ -90,6 +91,7 @@ class LlamaModel(LlamaPreTrainedModel):
                 device=inputs_embeds.device,
                 past_key_values_length=past_key_values_length,
             )
+            ops.append('_make_causal_mask')
 
         if attention_mask is not None:
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
@@ -99,6 +101,9 @@ class LlamaModel(LlamaPreTrainedModel):
             combined_attention_mask = (
                 expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask + combined_attention_mask
             )
+            ops.append('_expand_mask')
+        getattr(logger, self.verbose_level)(f"params: ({list(attention_mask.shape)}, {input_shape}"
+                                            f", {past_key_values_length}, ouput: {list(combined_attention_mask.shape)}, ops: {' -> '.join(ops)}")
 
         return combined_attention_mask
 
@@ -115,7 +120,7 @@ class LlamaModel(LlamaPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
-        # 1. check configs
+        # Step 1. check configs
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions # False
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -124,7 +129,7 @@ class LlamaModel(LlamaPreTrainedModel):
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict # True
 
-        # 2. retrieve `input_ids` and inputs_embeds
+        # Step 2. retrieve `input_ids` and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
         elif input_ids is not None:
@@ -141,7 +146,7 @@ class LlamaModel(LlamaPreTrainedModel):
             past_key_values_length = past_key_values[0][0].shape[2]
             seq_length_with_past = seq_length_with_past + past_key_values_length
 
-        # 3. position_ids: 1) 预填充阶段, range(seq_len); 2) KV Cache 阶段, seq_len ++
+        # Step 3. position_ids: a) 预填充阶段, range(seq_len); b) KV Cache 阶段, seq_len ++
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
@@ -150,14 +155,16 @@ class LlamaModel(LlamaPreTrainedModel):
             position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
         else:
             position_ids = position_ids.view(-1, seq_length).long()
-        logger.debug(f"position_ids: {list(position_ids)}")
+        getattr(logger, self.verbose_level)(f"position_ids: {position_ids.cpu().numpy().tolist()}")
 
-        # 4. get inputs embeds
+        # Step 4. get inputs embeds
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
         
-        # 5. embed attention_mask
+        # Step 5. embed attention_mask
         if attention_mask is None:
+            # 经测试，attention_mask 输出并非 None
+            getattr(logger, self.verbose_level)(f"attention_mask initial by all one")
             attention_mask = torch.ones(
                 (batch_size, seq_length_with_past), dtype=torch.bool, device=inputs_embeds.device
             )
@@ -169,12 +176,12 @@ class LlamaModel(LlamaPreTrainedModel):
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
-                logger.warning_once(
+                logger.warning(
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
                 )
                 use_cache = False
 
-        # 6. decoder layers
+        # Step 6. decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         next_decoder_cache = () if use_cache else None
@@ -218,7 +225,7 @@ class LlamaModel(LlamaPreTrainedModel):
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
 
-        # 7. RMSNorm
+        # Step 7. RMSNorm
         hidden_states = self.norm(hidden_states)
 
         # add hidden states from the last decoder layer

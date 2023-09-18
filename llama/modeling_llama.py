@@ -137,6 +137,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel):
             logits = self.lm_head(hidden_states)
         logits = logits.float()
 
+        # loss
         loss = None
         if labels is not None:
             # Shift so that tokens < n predict n

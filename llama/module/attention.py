@@ -13,21 +13,41 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     """
     This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep). The hidden states go from (batch,
     num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)
+    
+    num_key_value_heads维度上的重复是逐个相间的:
+        - 首先取原张量中的第一个"key-value head"并重复它
+        - 然后取第二个，并重复它，依此类推
     """
     batch, num_key_value_heads, slen, head_dim = hidden_states.shape
     if n_rep == 1:
         return hidden_states
+    
     hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 
 class LlamaAttention(nn.Module):
-    """Multi-headed attention from 'Attention Is All You Need' paper"""
+    """Multi-headed attention from 'Attention Is All You Need' paper
+    
+    创新点:
+        1 `GQA`: k 和 v 的 head 数量可以是 q 的 head 数量的几分之一，类似分组卷积的思想，可以减少参数规模
+        2 `RoPE`: 
+            传统的Transformer模型通常通过加法将位置编码加到输入嵌入中。
+            但在这个模型中，使用Rotary Position Embeddings (RoPE)对 query 和 key 进行了位置编码
+            动态调整 RoPE 的缩放
+        3 `KV Cache`: 允许传入 key 和 value 的 states 的缓存 past_key_value，这在多轮对话中可以减少重复计算，起到加速效果
+        4 `attention_mask`: 是通过加法形式作用到 softmax 之前的 attention 矩阵上的
+        5 `Attention`: fp32 Softmax
+        6 `预训练技巧`: 
+            - 这个模型在预训练阶段使用了一个参数`config.pretraining_tp`，可能涉及某种分批处理或其他预训练技巧。
+            - 当计算query、key和value的线性变换时，如果`config.pretraining_tp`大于1，权重会被分片处理。
+    """
 
-    def __init__(self, config: LlamaConfig, layer_num:int=0):
+    def __init__(self, config: LlamaConfig, layer_num:int=0, verbose_level='trace'):
         super().__init__()
         self.config = config
         self.layer_num = layer_num
+        self.verbose_level = verbose_level
         self.hidden_size = config.hidden_size # 5120
         self.num_heads = config.num_attention_heads # 40
         self.head_dim = self.hidden_size // self.num_heads # 128
@@ -86,10 +106,11 @@ class LlamaAttention(nn.Module):
         output_attentions: bool = False,
         use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        
         # Step 1: Get the dimensions of the input
         bsz, q_len, _ = hidden_states.size()
 
-        #  Step 2: Apply linear transformations to get query, key, and value states
+        # Step 2: Apply linear transformations to get query, key, and value states
         if self.config.pretraining_tp > 1: # self.config.pretraining_tp = 1
             key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
             query_slices = self.q_proj.weight.split(
@@ -112,7 +133,8 @@ class LlamaAttention(nn.Module):
             value_states = self.v_proj(hidden_states)
 
         # Step 3: Reshape the states for multi-head attention computation
-        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2) # [bs, seq, 5120] -> [bs, num_head / 40, seq, 128]
+        #   [bs, seq, 5120] -> [bs, num_head / 40, seq, 128]
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
@@ -125,16 +147,16 @@ class LlamaAttention(nn.Module):
 
         # Step 5: Use past key and value states if provided
         if past_key_value is not None:
-            # reuse k, v, self_attention
+            # reuse k, v
             key_states = torch.cat([past_key_value[0], key_states], dim=2)
             value_states = torch.cat([past_key_value[1], value_states], dim=2)
             if self.layer_num == 1:
-                logger.trace(f"past_key_value: {list(past_key_value[0].shape)}, {list(past_key_value[1].shape)}, "
+                getattr(logger, self.verbose_level)(f"Query: {list(query_states.shape)}, "
+                             f"past_key_value: {list(past_key_value[0].shape)}, {list(past_key_value[1].shape)}, "
                              f"key_value: {list(key_states.shape)}, {list(value_states.shape)}")
         else:
             if self.layer_num == 1:
-                logger.trace(f"past_key_value is None")
-            
+                getattr(logger, self.verbose_level)(f"Query: {list(query_states.shape)}, past_key_value is None")
 
         past_key_value = (key_states, value_states) if use_cache else None
 
@@ -174,6 +196,7 @@ class LlamaAttention(nn.Module):
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
+        # Step 11: Output project
         if self.config.pretraining_tp > 1:
             attn_output = attn_output.split(self.hidden_size // self.config.pretraining_tp, dim=2)
             o_proj_slices = self.o_proj.weight.split(self.hidden_size // self.config.pretraining_tp, dim=1)

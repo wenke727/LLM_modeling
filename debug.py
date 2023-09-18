@@ -16,8 +16,10 @@ tokenizer = LlamaTokenizer.from_pretrained(repo_id, use_fast=False)
 vis_model_stucture(model)
 
 tokenizer.pad_token = tokenizer.eos_token
-input_ids = tokenizer(['<s>Human: Introduce the history of Shenzhen\n</s><s>Assistant: '], 
-                      return_tensors="pt",add_special_tokens=False).input_ids.to('cuda')        
+# input_ids = tokenizer(['<s>Human: Introduce the history of Shenzhen\n</s><s>Assistant: '], 
+                    #   return_tensors="pt",add_special_tokens=False).input_ids.to('cuda')        
+input_ids = tokenizer(['<s>Human: Who are you?\n</s><s>Assistant: '], 
+                      return_tensors="pt",add_special_tokens=False).input_ids.to('cuda')  
 generate_input = {
     "input_ids":input_ids,
     "max_new_tokens":512,
