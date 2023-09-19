@@ -1,69 +1,63 @@
 import torch
 from torch.nn import LayerNorm
+import torch.nn.functional as F
 
+from .mlp import MLP
 from .norm import RMSNorm
 from .attention import SelfAttention
-from .mlp import MLP
 
 from ..configuration_chatglm import ChatGLMConfig
+
 
 class GLMBlock(torch.nn.Module):
     """A single transformer layer.
 
-    Transformer layer takes input with size [s, b, h] and returns an
-    output of the same size.
+    Transformer layer takes input with size [s, b, h] and returns an output of the same size.
     """
 
     def __init__(self, config: ChatGLMConfig, layer_number, device=None):
         super(GLMBlock, self).__init__()
         self.layer_number = layer_number
 
-        self.apply_residual_connection_post_layernorm = config.apply_residual_connection_post_layernorm
-
-        self.fp32_residual_connection = config.fp32_residual_connection
-
+        self.apply_residual_connection_post_layernorm = config.apply_residual_connection_post_layernorm # False
+        self.fp32_residual_connection = config.fp32_residual_connection # False
         LayerNormFunc = RMSNorm if config.rmsnorm else LayerNorm
+        
         # Layernorm on the input data.
-        self.input_layernorm = LayerNormFunc(config.hidden_size, eps=config.layernorm_epsilon, device=device,
-                                             dtype=config.torch_dtype)
+        self.input_layernorm = LayerNormFunc(
+            config.hidden_size, eps=config.layernorm_epsilon, device=device, dtype=config.torch_dtype)
 
         # Self attention.
         self.self_attention = SelfAttention(config, layer_number, device=device)
-        self.hidden_dropout = config.hidden_dropout
+        self.hidden_dropout = config.hidden_dropout # 0.0
 
         # Layernorm on the attention output
-        self.post_attention_layernorm = LayerNormFunc(config.hidden_size, eps=config.layernorm_epsilon, device=device,
-                                                      dtype=config.torch_dtype)
+        self.post_attention_layernorm = LayerNormFunc(
+            config.hidden_size, eps=config.layernorm_epsilon, device=device, dtype=config.torch_dtype)
 
         # MLP
         self.mlp = MLP(config, device=device)
 
-    def forward(
-            self, hidden_states, attention_mask, rotary_pos_emb, kv_cache=None, use_cache=True,
-    ):
+    def forward(self, hidden_states, attention_mask, rotary_pos_emb, kv_cache=None, use_cache=True):
         # hidden_states: [s, b, h]
 
-        # Layer norm at the beginning of the transformer layer.
+        # `Layer norm` at the beginning of the transformer layer.
         layernorm_output = self.input_layernorm(hidden_states)
+        
         # Self attention.
         attention_output, kv_cache = self.self_attention(
-            layernorm_output,
-            attention_mask,
-            rotary_pos_emb,
-            kv_cache=kv_cache,
-            use_cache=use_cache
-        )
+            layernorm_output, attention_mask, rotary_pos_emb, kv_cache=kv_cache, use_cache=use_cache)
 
         # Residual connection.
-        if self.apply_residual_connection_post_layernorm:
+        if self.apply_residual_connection_post_layernorm: # Flase
             residual = layernorm_output
         else:
-            residual = hidden_states
+            residual = hidden_states # [seq_len, bs, 4096]
 
-        layernorm_input = torch.nn.functional.dropout(attention_output, p=self.hidden_dropout, training=self.training)
+        layernorm_input = F.dropout(attention_output, p=self.hidden_dropout, training=self.training)
         layernorm_input = residual + layernorm_input
 
-        # Layer norm post the self attention.
+        # `Layer norm` post the self attention.
         layernorm_output = self.post_attention_layernorm(layernorm_input)
 
         # MLP.
@@ -75,7 +69,7 @@ class GLMBlock(torch.nn.Module):
         else:
             residual = layernorm_input
 
-        output = torch.nn.functional.dropout(mlp_output, p=self.hidden_dropout, training=self.training)
+        output = F.dropout(mlp_output, p=self.hidden_dropout, training=self.training)
         output = residual + output
 
         return output, kv_cache

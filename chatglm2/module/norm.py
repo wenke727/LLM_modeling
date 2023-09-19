@@ -1,5 +1,6 @@
 import torch
 
+
 class RMSNorm(torch.nn.Module):
     def __init__(self, normalized_shape, eps=1e-5, device=None, dtype=None, **kwargs):
         super().__init__()

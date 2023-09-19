@@ -14,8 +14,8 @@ from transformers.modeling_outputs import (
 )
 from transformers.utils import logging
 
-from ..configuration_chatglm import ChatGLMConfig
-from .model import ChatGLMPreTrainedModel, ChatGLMModel
+from .configuration_chatglm import ChatGLMConfig
+from .module.model import ChatGLMPreTrainedModel, ChatGLMModel
 
 # flags required to enable jit fusion kernels
 

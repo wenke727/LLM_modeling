@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning].
 
 - /
 
+
+
+## [0.0.7] - 2023-09-18
+
+### Changed
+
+- ChatGLM/module
+
+  前向、维度变化、日志模块
+
+  - position_embedding：`RotaryEmbedding`， `apply_rotary_pos_emb`
+
+  - attention：`CoreAttention`，`SelfAttention`
+  - decoder_layer：`GLMBlock`
+  - transformer: `GLMTransformer`
+  - model: `ChatGLMModel`
+
 ## [0.0.6] - 2023-09-18
 
 ### Changed

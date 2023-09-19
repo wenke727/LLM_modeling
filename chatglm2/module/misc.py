@@ -18,8 +18,7 @@ def split_tensor_along_last_dim(
     Arguments:
         tensor: input tensor.
         num_partitions: number of partitions to split the tensor
-        contiguous_split_chunks: If True, make each chunk contiguous
-                                 in memory.
+        contiguous_split_chunks: If True, make each chunk contiguous in memory.
 
     Returns:
         A list of Tensors

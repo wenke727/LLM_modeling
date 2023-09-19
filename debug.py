@@ -41,11 +41,12 @@ def debug_LLaMA_2():
     text = tokenizer.decode(generate_ids[0])
     print(text)
     
-def debug_ChatGLM2_6B(query="你好", token_fn = "./chatglm2/tokenizer", repo_fn = "./ckpt/chatglm2-6b-hf", vis_model=True):
+def debug_ChatGLM2_6B(query="你好", token_fn = "./chatglm2/tokenizer", repo_fn = "./ckpt/chatglm2-6b-hf", vis_model=False):
     from chatglm2 import ChatGLMForConditionalGeneration, ChatGLMTokenizer
 
     tokenizer = ChatGLMTokenizer.from_pretrained(token_fn, trust_remote_code=True)
     model = ChatGLMForConditionalGeneration.from_pretrained(repo_fn).cuda()
+    model.eval()
 
     if vis_model:
         from bigmodelvis import Visualization
@@ -56,12 +57,12 @@ def debug_ChatGLM2_6B(query="你好", token_fn = "./chatglm2/tokenizer", repo_fn
 
     response, history = model.chat(tokenizer, query, history=[])
     print(response)
-    # print(history)
+    print(history)
 
     return response
     
     
 if __name__ == "__main__":
     # debug_LLaMA_2()
-    debug_ChatGLM2_6B("你好，介绍下你自己。你和 ChatGPT 有何异同点？")
+    debug_ChatGLM2_6B("你好，先介绍下你自己。今天是9月19日，请告诉我一个历史上的今天")
     
